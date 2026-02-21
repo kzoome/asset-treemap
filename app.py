@@ -102,7 +102,7 @@ def load_data():
     return df
 
 # 3. 메인 화면 구성
-st.title("💰 나의 투자 포트폴리오")
+st.title("Treemap")
 
 # 사이드바: 자산 종류 필터
 st.sidebar.header("🔍 필터")
@@ -139,8 +139,6 @@ try:
     filtered_df['종목명_display'] = filtered_df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=wrap_width)))
     
     # 모바일 최적화: 트리맵만 크게 표시
-    st.subheader("📊 전체 자산 트리맵")
-    
     fig_tree = px.treemap(
         filtered_df,
         path=[px.Constant("전체"), '구분', '자산종류', '종목명_display'],
