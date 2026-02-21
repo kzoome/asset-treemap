@@ -149,24 +149,32 @@ try:
         color='변동_MTD_숫자',
         color_continuous_scale=[[0, '#FF0000'], [0.5, '#000000'], [1, '#00FF00']],
         range_color=[-10, 10],
-        hover_data=['종목명', '금액', '변동_MTD_KRW'],
+        hover_data=['종목명', '변동_MTD_KRW'],
     )
     # 모바일 가독성을 위해 높이를 늘리고 텍스트 설정 최적화
     fig_tree.update_traces(
-        texttemplate="<b>%{label}</b><br>%{value:.1f}%",
+        texttemplate="<b>%{label}</b><br>%{value:.1f}% (%{customdata[1]})",
         textposition='middle center',
         textfont_size=16,
-        hovertemplate="<b>%{customdata[0]}</b><br>금액: %{customdata[1]}<br>변동: %{customdata[2]}<extra></extra>"
+        hoverinfo='skip'  # 호버 기능 완전히 제거
     )
     
     fig_tree.update_layout(
         margin=dict(t=10, l=10, r=10, b=10),
         height=600,
-        hoverlabel=dict(bgcolor="white", font_size=14, font_family="NanumGothic"),
         coloraxis_showscale=False  # UI를 깔끔하게 하기 위해 색상 바 숨김
     )
     
-    st.plotly_chart(fig_tree, use_container_width=True)
+    # config={'displayModeBar': False}를 추가하여 모바일 방해 요소 제거
+    st.plotly_chart(fig_tree, use_container_width=True, config={'displayModeBar': False})
+
+    # 모바일 사용자를 위한 상세 데이터 표 추가
+    with st.expander("📊 상세 데이터 보기"):
+        st.dataframe(
+            filtered_df[['종목명', '자산종류', '비중', '변동_MTD_KRW']],
+            hide_index=True,
+            use_container_width=True
+        )
     
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
