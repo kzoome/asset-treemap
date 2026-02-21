@@ -1,0 +1,7 @@
+# 보안 관련 파일
+service_account.json
+.streamlit/secrets.toml
+
+# 파이썬 캐시 및 시스템 파일
+__pycache__/
+.DS_Store
