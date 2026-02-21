@@ -156,13 +156,15 @@ try:
         texttemplate="<b>%{label}</b><br>%{value:.1f}% (%{customdata[1]})",
         textposition='middle center',
         textfont_size=16,
-        hoverinfo='skip'  # 호버 기능 완전히 제거
+        hoverinfo='skip',  # 마우스 오버 이벤트 무시
+        hovertemplate=None # 자동 생성된 호버 템플릿 제거
     )
     
     fig_tree.update_layout(
         margin=dict(t=10, l=10, r=10, b=10),
         height=600,
-        coloraxis_showscale=False  # UI를 깔끔하게 하기 위해 색상 바 숨김
+        coloraxis_showscale=False,  # UI를 깔끔하게 하기 위해 색상 바 숨김
+        hovermode=False            # 차트 전체의 호버 모드 비활성화
     )
     
     # config={'displayModeBar': False}를 추가하여 모바일 방해 요소 제거
