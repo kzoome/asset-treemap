@@ -99,6 +99,9 @@ def load_data():
     if '변동_1y' in df.columns:
         df['변동_숫자'] = df['변동_1y'].apply(clean_percentage)
 
+    if '변동_MTD_KRW' in df.columns:
+        df['변동_MTD_숫자'] = df['변동_MTD_KRW'].apply(clean_percentage)
+
     return df
 
 # 3. 메인 화면 구성
@@ -143,12 +146,25 @@ try:
         filtered_df,
         path=[px.Constant("전체"), '구분', '자산종류', '종목명_display'],
         values='비중_숫자',
-        color='자산종류',
-        hover_data=['비중', '금액', '변동_1y'],
+        color='변동_MTD_숫자',
+        color_continuous_scale=[[0, '#FF0000'], [0.5, '#000000'], [1, '#00FF00']],
+        range_color=[-10, 10],
+        hover_data=['종목명', '금액', '변동_MTD_KRW'],
     )
     # 모바일 가독성을 위해 높이를 늘리고 텍스트 설정 최적화
-    fig_tree.update_traces(texttemplate="%{label}<br>%{value:.1f}%", textposition='middle center', textfont_size=18)
-    fig_tree.update_layout(margin=dict(t=10, l=10, r=10, b=10), height=600)
+    fig_tree.update_traces(
+        texttemplate="<b>%{label}</b><br>%{value:.1f}%",
+        textposition='middle center',
+        textfont_size=16,
+        hovertemplate="<b>%{customdata[0]}</b><br>금액: %{customdata[1]}<br>변동: %{customdata[2]}<extra></extra>"
+    )
+    
+    fig_tree.update_layout(
+        margin=dict(t=10, l=10, r=10, b=10),
+        height=600,
+        hoverlabel=dict(bgcolor="white", font_size=14, font_family="NanumGothic"),
+        coloraxis_showscale=False  # UI를 깔끔하게 하기 위해 색상 바 숨김
+    )
     
     st.plotly_chart(fig_tree, use_container_width=True)
     
