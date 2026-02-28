@@ -139,13 +139,18 @@ try:
     
     # 색상 기준 선택
     color_options = {
-        '1D (일간)': ('변동_1d_숫자', '변동_1d'),
-        'MTD Local': ('변동_MTD_local_숫자', '변동_MTD_local'),
-        'MTD KRW (원화)': ('변동_MTD_KRW_숫자', '변동_MTD_KRW'),
-        '1Y (연간)': ('변동_1y_숫자', '변동_1y'),
+        '1D (일간)': ('변동_1d_숫자', '변동_1d', 3),
+        'MTD Local': ('변동_MTD_local_숫자', '변동_MTD_local', 10),
+        'MTD KRW (원화)': ('변동_MTD_KRW_숫자', '변동_MTD_KRW', 10),
+        '1Y (연간)': ('변동_1y_숫자', '변동_1y', 30),
     }
     selected_color_label = st.sidebar.selectbox("🎨 색상 기준", list(color_options.keys()), index=2)
-    color_num_col, color_raw_col = color_options[selected_color_label]
+    color_num_col, color_raw_col, default_range = color_options[selected_color_label]
+    
+    # 색상 범위 커스텀 조절
+    color_range = st.sidebar.slider(
+        "🎚️ 색상 범위 (±%)", min_value=1, max_value=50, value=default_range
+    )
     
     # 화면 크기에 따라 사용자가 직접 조절할 수 있도록 슬라이더 추가
     wrap_width = st.sidebar.slider("텍스트 줄바꿈 기준 (글자수)", min_value=5, max_value=30, value=10)
@@ -162,7 +167,7 @@ try:
         values='비중_숫자',
         color=color_num_col,
         color_continuous_scale=[[0, '#FF0000'], [0.5, '#000000'], [1, '#00FF00']],
-        range_color=[-10, 10],
+        range_color=[-color_range, color_range],
         hover_data=['종목명', color_raw_col],
     )
     # 모바일 가독성을 위해 높이를 늘리고 텍스트 설정 최적화
