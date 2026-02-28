@@ -183,7 +183,21 @@ try:
         with st.spinner('환율 데이터를 불러오는 중...'):
             exchange_df = get_exchange_rate()
             if not exchange_df.empty:
-                st.line_chart(exchange_df, y='Close', use_container_width=True)
+                # st.line_chart 대신 Plotly를 사용하여 y축이 0부터 시작하지 않도록 자동 스케일링
+                fig_ex = px.line(
+                    exchange_df, 
+                    y='Close', 
+                    title="USD/KRW 환율 추이"
+                )
+                fig_ex.update_layout(
+                    xaxis_title="",
+                    yaxis_title="원 (KRW)",
+                    margin=dict(t=30, l=10, r=10, b=10),
+                    height=300
+                )
+                fig_ex.update_yaxes(autorange=True) # 데이터 범위에 맞게 자동 조절
+                
+                st.plotly_chart(fig_ex, use_container_width=True, config={'displayModeBar': False})
             else:
                 st.warning("환율 데이터를 가져올 수 없습니다.")
     except Exception as e:
