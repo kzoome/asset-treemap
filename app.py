@@ -124,7 +124,7 @@ try:
         'MTD KRW (원화)': ('변동_MTD_KRW_숫자', '변동_MTD_KRW', 10),
         '1Y (연간)': ('변동_1y_숫자', '변동_1y', 30),
     }
-    selected_color_label = st.sidebar.selectbox("색상 기준", list(color_options.keys()), index=2)
+    selected_color_label = st.sidebar.selectbox("색상 기준", list(color_options.keys()), index=0)
     color_num_col, color_raw_col, default_range = color_options[selected_color_label]
     
     # 색상 범위 커스텀 조절
@@ -167,13 +167,27 @@ try:
     # config={'displayModeBar': False}를 추가하여 모바일 방해 요소 제거
     st.plotly_chart(fig_tree, use_container_width=True, config={'displayModeBar': False})
 
-    # 모바일 사용자를 위한 상세 데이터 표 추가
-    with st.expander("📊 상세 데이터 보기"):
-        st.dataframe(
-            df[['종목명', '자산종류', '비중', color_raw_col]],
-            hide_index=True,
-            use_container_width=True
-        )
+    # 환율 차트 추가 (3개월)
+    st.markdown("---")
+    st.subheader("📈 최근 3개월 원/달러 환율 (USD/KRW)")
+    
+    @st.cache_data(ttl=3600)  # 1시간마다 환율 데이터 갱신
+    def get_exchange_rate():
+        import yfinance as yf
+        ticker = yf.Ticker("USDKRW=X")
+        # 최근 3개월 데이터 
+        hist = ticker.history(period="3mo")
+        return hist[['Close']]
+        
+    try:
+        with st.spinner('환율 데이터를 불러오는 중...'):
+            exchange_df = get_exchange_rate()
+            if not exchange_df.empty:
+                st.line_chart(exchange_df, y='Close', use_container_width=True)
+            else:
+                st.warning("환율 데이터를 가져올 수 없습니다.")
+    except Exception as e:
+        st.error(f"환율 데이터를 가져오는데 실패했습니다: {e}")
     
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
