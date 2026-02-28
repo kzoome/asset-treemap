@@ -135,6 +135,24 @@ try:
     # 화면 크기에 따라 사용자가 직접 조절할 수 있도록 슬라이더 추가
     wrap_width = st.sidebar.slider("텍스트 줄바꿈 기준 (글자수)", min_value=5, max_value=30, value=10)
     
+    # --- 환율 차트 설정 ---
+    st.sidebar.markdown("---")
+    st.sidebar.header("📈 환율 차트 설정")
+    
+    # 기간 선택 드롭다운 (1개월 ~ 10년)
+    period_options = {
+        '1개월': '1mo',
+        '3개월': '3mo',
+        '6개월': '6mo',
+        '1년': '1y',
+        '5년': '5y',
+        '10년': '10y'
+    }
+    
+    # 기본값을 '3개월'로 설정 (index 1)
+    selected_period_label = st.sidebar.selectbox("조회 기간", list(period_options.keys()), index=1)
+    selected_period = period_options[selected_period_label]
+    
     # 설정한 글자수 기준으로 줄바꿈 처리
     df['종목명_display'] = df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=wrap_width)))
     
@@ -169,24 +187,6 @@ try:
 
     # 환율 차트 추가
     st.markdown("---")
-    
-    # 기간 선택 드롭다운 (1개월 ~ 10년)
-    period_options = {
-        '1개월': '1mo',
-        '3개월': '3mo',
-        '6개월': '6mo',
-        '1년': '1y',
-        '5년': '5y',
-        '10년': '10y'
-    }
-    
-    # 차트 제목과 기간 선택기를 나란히 배치
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        # 기본값을 '3개월'로 설정 (index 1)
-        selected_period_label = st.selectbox("조회 기간", list(period_options.keys()), index=1, label_visibility="collapsed")
-    
-    selected_period = period_options[selected_period_label]
     st.subheader(f"📈 USD/KRW 환율 ({selected_period_label})")
     
     @st.cache_data(ttl=3600)  # 1시간마다 환율 데이터 갱신
