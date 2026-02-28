@@ -105,22 +105,17 @@ def load_data():
 # 3. 메인 화면 구성
 st.title("Treemap")
 
-# 사이드바: 자산 종류 필터
-st.sidebar.header("🔍 필터")
-
-# 데이터 새로고침 버튼 추가
-if st.sidebar.button("🔄 데이터 새로고침"):
-    st.cache_data.clear()
-    st.rerun()
-
-
 try:
     with st.spinner('구글 시트에서 데이터를 불러오는 중...'):
         df = load_data()
     
-    # 필터 적용
-    all_assets = df['자산종류'].unique()
-    selected_assets = st.sidebar.multiselect("자산 종류 선택", all_assets, default=all_assets)
+    # 사이드바 설정
+    st.sidebar.header("🎨 시각화 설정")
+
+    # 데이터 새로고침 버튼
+    if st.sidebar.button("🔄 데이터 새로고침"):
+        st.cache_data.clear()
+        st.rerun()
     
     # 색상 기준 선택
     color_options = {
@@ -129,7 +124,7 @@ try:
         'MTD KRW (원화)': ('변동_MTD_KRW_숫자', '변동_MTD_KRW', 10),
         '1Y (연간)': ('변동_1y_숫자', '변동_1y', 30),
     }
-    selected_color_label = st.sidebar.selectbox("🎨 색상 기준", list(color_options.keys()), index=2)
+    selected_color_label = st.sidebar.selectbox("색상 기준", list(color_options.keys()), index=2)
     color_num_col, color_raw_col, default_range = color_options[selected_color_label]
     
     # 색상 범위 커스텀 조절
@@ -140,14 +135,12 @@ try:
     # 화면 크기에 따라 사용자가 직접 조절할 수 있도록 슬라이더 추가
     wrap_width = st.sidebar.slider("텍스트 줄바꿈 기준 (글자수)", min_value=5, max_value=30, value=10)
     
-    filtered_df = df[df['자산종류'].isin(selected_assets)].copy()
-    
     # 설정한 글자수 기준으로 줄바꿈 처리
-    filtered_df['종목명_display'] = filtered_df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=wrap_width)))
+    df['종목명_display'] = df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=wrap_width)))
     
     # 모바일 최적화: 트리맵만 크게 표시
     fig_tree = px.treemap(
-        filtered_df,
+        df,
         path=[px.Constant("전체"), '구분', '자산종류', '종목명_display'],
         values='비중_숫자',
         color=color_num_col,
@@ -177,7 +170,7 @@ try:
     # 모바일 사용자를 위한 상세 데이터 표 추가
     with st.expander("📊 상세 데이터 보기"):
         st.dataframe(
-            filtered_df[['종목명', '자산종류', '비중', color_raw_col]],
+            df[['종목명', '자산종류', '비중', color_raw_col]],
             hide_index=True,
             use_container_width=True
         )
