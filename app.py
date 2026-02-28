@@ -193,16 +193,12 @@ try:
                     xaxis_title="",
                     yaxis_title="원 (KRW)",
                     xaxis=dict(
-                        tickformat="%y-%m-%d",  # 날짜 형식 'YY-MM-DD'로 지정
-                        dtick="M1",             # 1개월 단위 간격 표시 (혹은 데이터에 따라 자동 조절하려면 제거)
-                        tickangle=-45           # 날짜가 겹치지 않게 비스듬히 기울임
+                        tickformat="%m-%d",     # "월-일" 포맷 (ex: 02-15)
+                        nticks=6,               # x축에 표시할 눈금(tick)의 최대 개수를 제한하여 빽빽하지 않게 설정
+                        tickangle=0             # 날짜가 똑바로 보이게 (0도)
                     ),
                     margin=dict(t=30, l=10, r=10, b=10),
                     height=300
-                )
-                fig_ex.update_xaxes(
-                    dtick="14*86400000", # 약 2주 14일 * (ms in a day) 간격
-                    tickformat="%m-%d"   # "월-일" 포맷 (ex: 02-15)
                 )
                 fig_ex.update_yaxes(autorange=True) # 데이터 범위에 맞게 자동 조절
                 
