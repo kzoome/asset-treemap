@@ -169,7 +169,7 @@ try:
 
     # 환율 차트 추가 (3개월)
     st.markdown("---")
-    st.subheader("📈 최근 3개월 원/달러 환율 (USD/KRW)")
+    st.subheader("📈 USD/KRW 환율 (3개월)")
     
     @st.cache_data(ttl=3600)  # 1시간마다 환율 데이터 갱신
     def get_exchange_rate():
@@ -187,18 +187,18 @@ try:
                 fig_ex = px.line(
                     exchange_df, 
                     y='Close', 
-                    title="USD/KRW 환율 추이"
+                    title=""  # 제목 중복을 피하기 위해 Plotly 차트 자체 제목은 비움
                 )
                 fig_ex.update_layout(
                     xaxis_title="",
-                    yaxis_title="원 (KRW)",
+                    yaxis_title="원",
                     xaxis=dict(
                         tickformat="%m-%d",     # "월-일" 포맷 (ex: 02-15)
                         nticks=6,               # x축에 표시할 눈금(tick)의 최대 개수를 제한하여 빽빽하지 않게 설정
                         tickangle=0             # 날짜가 똑바로 보이게 (0도)
                     ),
-                    margin=dict(t=30, l=10, r=10, b=10),
-                    height=300
+                    margin=dict(t=10, l=10, r=10, b=10), # 상단 여백(t)을 줄여서 공간 확보
+                    height=250 # 높이도 모바일에 맞게 약간 축소
                 )
                 fig_ex.update_yaxes(autorange=True) # 데이터 범위에 맞게 자동 조절
                 
