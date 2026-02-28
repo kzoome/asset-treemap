@@ -170,21 +170,21 @@ try:
     # 환율 차트 추가
     st.markdown("---")
     
-    # 기간 선택 드롭다운 (1일 ~ 5년)
+    # 기간 선택 드롭다운 (1개월 ~ 10년)
     period_options = {
-        '1일': '1d',
-        '5일': '5d',
         '1개월': '1mo',
         '3개월': '3mo',
         '6개월': '6mo',
         '1년': '1y',
-        '5년': '5y'
+        '5년': '5y',
+        '10년': '10y'
     }
     
     # 차트 제목과 기간 선택기를 나란히 배치
     col1, col2 = st.columns([3, 1])
     with col1:
-        selected_period_label = st.selectbox("조회 기간", list(period_options.keys()), index=3, label_visibility="collapsed")
+        # 기본값을 '3개월'로 설정 (index 1)
+        selected_period_label = st.selectbox("조회 기간", list(period_options.keys()), index=1, label_visibility="collapsed")
     
     selected_period = period_options[selected_period_label]
     st.subheader(f"📈 USD/KRW 환율 ({selected_period_label})")
@@ -202,12 +202,11 @@ try:
             if not exchange_df.empty:
                 # 데이터 구간에 따라 x축 눈금 및 포맷 조절
                 tick_format = "%y-%m-%d"
-                if selected_period in ['1d', '5d']:
-                    tick_format = "%m-%d %H:%M" # 짧은 기간이면 시간도 표시
-                elif selected_period in ['1mo', '3mo', '6mo', '1y']:
-                    tick_format = "%m-%d" # 중간 기간이면 월/일
+                if selected_period in ['1mo', '3mo', '6mo']:
+                    tick_format = "%m-%d" # 짧은/중간 기간이면 월/일
                 else: 
-                    tick_format = "%y-%m" # 5년이면 년/월
+                    tick_format = "%y-%m" # 1년 이상이면 년/월
+
                 
                 # st.line_chart 대신 Plotly를 사용하여 y축이 0부터 시작하지 않도록 자동 스케일링
                 fig_ex = px.line(
