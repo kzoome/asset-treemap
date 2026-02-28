@@ -3,7 +3,6 @@ import pandas as pd
 import gspread
 import plotly.express as px
 from google.oauth2.service_account import Credentials
-import socket
 import textwrap
 
 # 1. 페이지 설정
@@ -114,20 +113,6 @@ if st.sidebar.button("🔄 데이터 새로고침"):
     st.cache_data.clear()
     st.rerun()
 
-# 모바일 접속 도우미 (QR코드)
-with st.sidebar.expander("📱 모바일에서 접속하기"):
-    try:
-        # 현재 PC의 로컬 네트워크 IP 주소 가져오기
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip_addr = s.getsockname()[0]
-        s.close()
-        url = f"http://{ip_addr}:8501"
-        st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={url}", caption="카메라로 스캔하세요")
-        st.write(f"주소: `{url}`")
-        st.info("⚠️ PC와 스마트폰이 **동일한 와이파이**에 연결되어 있어야 합니다.")
-    except Exception:
-        st.error("IP 주소를 확인할 수 없습니다.")
 
 try:
     with st.spinner('구글 시트에서 데이터를 불러오는 중...'):
