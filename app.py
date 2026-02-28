@@ -167,22 +167,48 @@ try:
     # config={'displayModeBar': False}를 추가하여 모바일 방해 요소 제거
     st.plotly_chart(fig_tree, use_container_width=True, config={'displayModeBar': False})
 
-    # 환율 차트 추가 (3개월)
+    # 환율 차트 추가
     st.markdown("---")
-    st.subheader("📈 USD/KRW 환율 (3개월)")
+    
+    # 기간 선택 드롭다운 (1일 ~ 5년)
+    period_options = {
+        '1일': '1d',
+        '5일': '5d',
+        '1개월': '1mo',
+        '3개월': '3mo',
+        '6개월': '6mo',
+        '1년': '1y',
+        '5년': '5y'
+    }
+    
+    # 차트 제목과 기간 선택기를 나란히 배치
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        selected_period_label = st.selectbox("조회 기간", list(period_options.keys()), index=3, label_visibility="collapsed")
+    
+    selected_period = period_options[selected_period_label]
+    st.subheader(f"📈 USD/KRW 환율 ({selected_period_label})")
     
     @st.cache_data(ttl=3600)  # 1시간마다 환율 데이터 갱신
-    def get_exchange_rate():
+    def get_exchange_rate(period_str):
         import yfinance as yf
         ticker = yf.Ticker("USDKRW=X")
-        # 최근 3개월 데이터 
-        hist = ticker.history(period="3mo")
+        hist = ticker.history(period=period_str)
         return hist[['Close']]
         
     try:
         with st.spinner('환율 데이터를 불러오는 중...'):
-            exchange_df = get_exchange_rate()
+            exchange_df = get_exchange_rate(selected_period)
             if not exchange_df.empty:
+                # 데이터 구간에 따라 x축 눈금 및 포맷 조절
+                tick_format = "%y-%m-%d"
+                if selected_period in ['1d', '5d']:
+                    tick_format = "%m-%d %H:%M" # 짧은 기간이면 시간도 표시
+                elif selected_period in ['1mo', '3mo', '6mo', '1y']:
+                    tick_format = "%m-%d" # 중간 기간이면 월/일
+                else: 
+                    tick_format = "%y-%m" # 5년이면 년/월
+                
                 # st.line_chart 대신 Plotly를 사용하여 y축이 0부터 시작하지 않도록 자동 스케일링
                 fig_ex = px.line(
                     exchange_df, 
@@ -191,9 +217,9 @@ try:
                 )
                 fig_ex.update_layout(
                     xaxis_title="",
-                    yaxis_title="원",
+                    yaxis_title="",         # 세로축 '원' 범례 제거
                     xaxis=dict(
-                        tickformat="%m-%d",     # "월-일" 포맷 (ex: 02-15)
+                        tickformat=tick_format, # 동적으로 포맷 설정
                         nticks=6,               # x축에 표시할 눈금(tick)의 최대 개수를 제한하여 빽빽하지 않게 설정
                         tickangle=0             # 날짜가 똑바로 보이게 (0도)
                     ),
