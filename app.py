@@ -96,11 +96,10 @@ def load_data():
     if '비중' in df.columns:
         df['비중_숫자'] = df['비중'].apply(clean_percentage)
 
-    if '변동_1y' in df.columns:
-        df['변동_숫자'] = df['변동_1y'].apply(clean_percentage)
-
-    if '변동_MTD_KRW' in df.columns:
-        df['변동_MTD_숫자'] = df['변동_MTD_KRW'].apply(clean_percentage)
+    # 모든 변동 컬럼을 숫자로 변환
+    for col in ['변동_1d', '변동_MTD_local', '변동_MTD_KRW', '변동_1y']:
+        if col in df.columns:
+            df[f'{col}_숫자'] = df[col].apply(clean_percentage)
 
     return df
 
@@ -138,6 +137,16 @@ try:
     all_assets = df['자산종류'].unique()
     selected_assets = st.sidebar.multiselect("자산 종류 선택", all_assets, default=all_assets)
     
+    # 색상 기준 선택
+    color_options = {
+        '1D (일간)': ('변동_1d_숫자', '변동_1d'),
+        'MTD Local': ('변동_MTD_local_숫자', '변동_MTD_local'),
+        'MTD KRW (원화)': ('변동_MTD_KRW_숫자', '변동_MTD_KRW'),
+        '1Y (연간)': ('변동_1y_숫자', '변동_1y'),
+    }
+    selected_color_label = st.sidebar.selectbox("🎨 색상 기준", list(color_options.keys()), index=2)
+    color_num_col, color_raw_col = color_options[selected_color_label]
+    
     # 화면 크기에 따라 사용자가 직접 조절할 수 있도록 슬라이더 추가
     wrap_width = st.sidebar.slider("텍스트 줄바꿈 기준 (글자수)", min_value=5, max_value=30, value=10)
     
@@ -151,10 +160,10 @@ try:
         filtered_df,
         path=[px.Constant("전체"), '구분', '자산종류', '종목명_display'],
         values='비중_숫자',
-        color='변동_MTD_숫자',
+        color=color_num_col,
         color_continuous_scale=[[0, '#FF0000'], [0.5, '#000000'], [1, '#00FF00']],
         range_color=[-10, 10],
-        hover_data=['종목명', '변동_MTD_KRW'],
+        hover_data=['종목명', color_raw_col],
     )
     # 모바일 가독성을 위해 높이를 늘리고 텍스트 설정 최적화
     fig_tree.update_traces(
@@ -178,7 +187,7 @@ try:
     # 모바일 사용자를 위한 상세 데이터 표 추가
     with st.expander("📊 상세 데이터 보기"):
         st.dataframe(
-            filtered_df[['종목명', '자산종류', '비중', '변동_MTD_KRW']],
+            filtered_df[['종목명', '자산종류', '비중', color_raw_col]],
             hide_index=True,
             use_container_width=True
         )
