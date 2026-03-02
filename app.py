@@ -4,6 +4,7 @@ import gspread
 import plotly.express as px
 from google.oauth2.service_account import Credentials
 import textwrap
+import streamlit.components.v1 as components
 
 # 1. 페이지 설정
 st.set_page_config(page_title="내 포트폴리오", layout="wide")
@@ -134,7 +135,10 @@ try:
     
     # 화면 크기에 따라 사용자가 직접 조절할 수 있도록 슬라이더 추가
     wrap_width = st.sidebar.slider("텍스트 줄바꿈 기준 (글자수)", min_value=5, max_value=30, value=10)
-    
+
+    # 트리맵 높이 조절 슬라이더
+    treemap_height = st.sidebar.slider("📏 트리맵 높이 (px)", min_value=400, max_value=1200, value=600, step=50)
+
     # --- 환율 차트 설정 ---
     st.sidebar.markdown("---")
     st.sidebar.header("📈 환율 차트 설정")
@@ -155,7 +159,7 @@ try:
     
     # 설정한 글자수 기준으로 줄바꿈 처리
     df['종목명_display'] = df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=wrap_width)))
-    
+
     # 모바일 최적화: 트리맵만 크게 표시
     fig_tree = px.treemap(
         df,
@@ -177,13 +181,50 @@ try:
     
     fig_tree.update_layout(
         margin=dict(t=10, l=10, r=10, b=10),
-        height=600,
+        height=treemap_height,
         coloraxis_showscale=False,  # UI를 깔끔하게 하기 위해 색상 바 숨김
         hovermode=False            # 차트 전체의 호버 모드 비활성화
     )
     
-    # config={'displayModeBar': False}를 추가하여 모바일 방해 요소 제거
-    st.plotly_chart(fig_tree, use_container_width=True, config={'displayModeBar': False})
+    # Plotly 모드바 설정: 전체화면을 위한 커스텀 버튼 추가
+    # 불필요한 버튼들은 제거하고 유용한 기능만 남김
+    plotly_config = {
+        'displayModeBar': True,  # 모드바 표시
+        'displaylogo': False,  # Plotly 로고 숨김
+        'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'autoScale2d'],  # 불필요한 버튼 제거
+    }
+
+    # 전체화면 버튼을 위한 커스텀 HTML 추가
+    fullscreen_html = """
+    <script>
+    function openFullscreen() {
+        var elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+        }
+    }
+    </script>
+    <button onclick="openFullscreen()" style="
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        z-index: 999;
+        background-color: #0e1117;
+        color: white;
+        border: 1px solid #262730;
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+    ">🖥️ 전체화면</button>
+    """
+
+    components.html(fullscreen_html, height=0)
+    st.plotly_chart(fig_tree, use_container_width=True, config=plotly_config)
 
     # 환율 차트 추가
     st.markdown("---")
