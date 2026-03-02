@@ -186,44 +186,14 @@ try:
         hovermode=False            # 차트 전체의 호버 모드 비활성화
     )
     
-    # Plotly 모드바 설정: 전체화면을 위한 커스텀 버튼 추가
+    # Plotly 모드바 설정: Plotly 내장 전체화면 버튼 사용
     # 불필요한 버튼들은 제거하고 유용한 기능만 남김
     plotly_config = {
-        'displayModeBar': True,  # 모드바 표시
+        'displayModeBar': True,  # 모드바 표시 (전체화면 버튼 포함)
         'displaylogo': False,  # Plotly 로고 숨김
         'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'autoScale2d'],  # 불필요한 버튼 제거
     }
 
-    # 전체화면 버튼을 위한 커스텀 HTML 추가
-    fullscreen_html = """
-    <script>
-    function openFullscreen() {
-        var elem = document.documentElement;
-        if (elem.requestFullscreen) {
-            elem.requestFullscreen();
-        } else if (elem.webkitRequestFullscreen) {
-            elem.webkitRequestFullscreen();
-        } else if (elem.msRequestFullscreen) {
-            elem.msRequestFullscreen();
-        }
-    }
-    </script>
-    <button onclick="openFullscreen()" style="
-        position: fixed;
-        top: 80px;
-        right: 20px;
-        z-index: 999;
-        background-color: #0e1117;
-        color: white;
-        border: 1px solid #262730;
-        padding: 8px 16px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 14px;
-    ">🖥️ 전체화면</button>
-    """
-
-    components.html(fullscreen_html, height=0)
     st.plotly_chart(fig_tree, use_container_width=True, config=plotly_config)
 
     # 환율 차트 추가
@@ -273,6 +243,6 @@ try:
                 st.warning("환율 데이터를 가져올 수 없습니다.")
     except Exception as e:
         st.error(f"환율 데이터를 가져오는데 실패했습니다: {e}")
-    
+
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
