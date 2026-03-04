@@ -136,7 +136,7 @@ try:
         'MTD KRW (원화)': ('변동_MTD_KRW_숫자', '변동_MTD_KRW', 10),
         '1Y (연간)': ('변동_1y_숫자', '변동_1y', 30),
     }
-    selected_color_label = st.sidebar.selectbox("색상 기준", list(color_options.keys()), index=0)
+    selected_color_label = st.sidebar.selectbox("색상 기준", list(color_options.keys()), index=2)
     color_num_col, color_raw_col, default_range = color_options[selected_color_label]
     
     # 색상 범위 커스텀 조절
@@ -230,6 +230,7 @@ try:
     }
 
     st.plotly_chart(fig_tree, width='stretch', config=plotly_config)
+    st.markdown(f"<div style='text-align:right; color:gray; font-size:12px; margin-top:-34px; padding-right:10px;'>색상 기준: {selected_color_label} | ±{color_range}%</div>", unsafe_allow_html=True)
 
     # 환율 차트 추가
     st.markdown("---")
