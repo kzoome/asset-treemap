@@ -40,8 +40,13 @@ if not check_password():
 
 # --- Viewport 감지 (모바일/데스크탑 기본 높이 자동 설정) ---
 from streamlit_js_eval import streamlit_js_eval
-viewport_width = streamlit_js_eval(js_expressions="screen.width", key="screen_width")
-default_treemap_height = 800 if (viewport_width or 0) > 768 else 600
+if 'viewport_width' not in st.session_state:
+    vw = streamlit_js_eval(js_expressions="screen.width", key="screen_width")
+    if vw is None:
+        st.stop()  # JS 결과 오기 전까지 데이터 로딩 안 함
+    st.session_state.viewport_width = vw
+
+default_treemap_height = 800 if st.session_state.viewport_width > 768 else 600
 # -------------------------------------------------------
 
 # 2. 구글 시트 연결 설정
@@ -178,7 +183,8 @@ try:
     for group_col in ['구분', '자산종류']:
         grouped = df.groupby(group_col).apply(
             lambda x: (x[color_num_col] * x['비중_숫자']).sum() / x['비중_숫자'].sum()
-            if x['비중_숫자'].sum() > 0 else 0.0
+            if x['비중_숫자'].sum() > 0 else 0.0,
+            include_groups=False
         ).reset_index(name=f'{group_col}_변동_숫자')
         df = df.merge(grouped, on=group_col, how='left')
         df[f'{group_col}_변동_str'] = df[f'{group_col}_변동_숫자'].apply(lambda v: f"{v:+.1f}%")
@@ -223,7 +229,7 @@ try:
         'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'autoScale2d'],  # 불필요한 버튼 제거
     }
 
-    st.plotly_chart(fig_tree, use_container_width=True, config=plotly_config)
+    st.plotly_chart(fig_tree, width='stretch', config=plotly_config)
 
     # 환율 차트 추가
     st.markdown("---")
@@ -267,7 +273,7 @@ try:
                 )
                 fig_ex.update_yaxes(autorange=True) # 데이터 범위에 맞게 자동 조절
                 
-                st.plotly_chart(fig_ex, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_ex, width='stretch', config={'displayModeBar': False})
             else:
                 st.warning("환율 데이터를 가져올 수 없습니다.")
     except Exception as e:
