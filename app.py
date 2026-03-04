@@ -38,6 +38,12 @@ if not check_password():
     st.stop()
 # -----------------------
 
+# --- Viewport 감지 (모바일/데스크탑 기본 높이 자동 설정) ---
+from streamlit_js_eval import streamlit_js_eval
+viewport_width = streamlit_js_eval(js_expressions="screen.width", key="screen_width")
+default_treemap_height = 800 if (viewport_width or 0) > 768 else 600
+# -------------------------------------------------------
+
 # 2. 구글 시트 연결 설정
 SERVICE_ACCOUNT_FILE = 'service_account.json'
 SHEET_URL = st.secrets.get("SHEET_URL", "https://docs.google.com/spreadsheets/d/YOUR_DEFAULT_URL/edit")
@@ -137,7 +143,7 @@ try:
     wrap_width = st.sidebar.slider("텍스트 줄바꿈 기준 (글자수)", min_value=5, max_value=30, value=10)
 
     # 트리맵 높이 조절 슬라이더
-    treemap_height = st.sidebar.slider("📏 트리맵 높이 (px)", min_value=400, max_value=1200, value=600, step=50)
+    treemap_height = st.sidebar.slider("📏 트리맵 높이 (px)", min_value=400, max_value=1200, value=default_treemap_height, step=50)
 
     # 트리맵 레벨 선택
     level_options = {
