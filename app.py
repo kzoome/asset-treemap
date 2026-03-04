@@ -139,6 +139,14 @@ try:
     # 트리맵 높이 조절 슬라이더
     treemap_height = st.sidebar.slider("📏 트리맵 높이 (px)", min_value=400, max_value=1200, value=600, step=50)
 
+    # 트리맵 레벨 선택
+    level_options = {
+        '3단계: 구분 → 자산종류 → 종목': [px.Constant("전체"), '구분', '자산종류', '종목명_display'],
+        '2단계: 구분 → 자산종류': [px.Constant("전체"), '구분', '자산종류'],
+        '1단계: 구분': [px.Constant("전체"), '구분'],
+    }
+    selected_level_label = st.sidebar.radio("🗂️ 트리맵 레벨", list(level_options.keys()), index=0)
+
     # --- 환율 차트 설정 ---
     st.sidebar.markdown("---")
     st.sidebar.header("📈 환율 차트 설정")
@@ -160,30 +168,45 @@ try:
     # 설정한 글자수 기준으로 줄바꿈 처리
     df['종목명_display'] = df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=wrap_width)))
 
+    # 레벨별 가중평균 변동값 사전 계산 (1/2단계에서 (?) 방지)
+    for group_col in ['구분', '자산종류']:
+        grouped = df.groupby(group_col).apply(
+            lambda x: (x[color_num_col] * x['비중_숫자']).sum() / x['비중_숫자'].sum()
+            if x['비중_숫자'].sum() > 0 else 0.0
+        ).reset_index(name=f'{group_col}_변동_숫자')
+        df = df.merge(grouped, on=group_col, how='left')
+        df[f'{group_col}_변동_str'] = df[f'{group_col}_변동_숫자'].apply(lambda v: f"{v:+.1f}%")
+
+    level_change_col = {
+        '3단계: 구분 → 자산종류 → 종목': color_raw_col,
+        '2단계: 구분 → 자산종류': '자산종류_변동_str',
+        '1단계: 구분': '구분_변동_str',
+    }
+    display_change_col = level_change_col[selected_level_label]
+
     # 모바일 최적화: 트리맵만 크게 표시
     fig_tree = px.treemap(
         df,
-        path=[px.Constant("전체"), '구분', '자산종류', '종목명_display'],
+        path=level_options[selected_level_label],
         values='비중_숫자',
         color=color_num_col,
         color_continuous_scale=[[0, '#FF0000'], [0.5, '#000000'], [1, '#00FF00']],
         range_color=[-color_range, color_range],
-        hover_data=['종목명', color_raw_col],
+        hover_data=['종목명', display_change_col],
     )
-    # 모바일 가독성을 위해 높이를 늘리고 텍스트 설정 최적화
     fig_tree.update_traces(
-        texttemplate="<b>%{label}</b><br>%{value:.1f}% (%{customdata[1]})",
+        texttemplate="<b>%{label}</b><br>%{value:.1f}% | %{customdata[1]}",
         textposition='middle center',
         textfont_size=16,
-        hoverinfo='skip',  # 마우스 오버 이벤트 무시
-        hovertemplate=None # 자동 생성된 호버 템플릿 제거
+        hoverinfo='skip',
+        hovertemplate=None,
     )
-    
+
     fig_tree.update_layout(
         margin=dict(t=10, l=10, r=10, b=10),
         height=treemap_height,
-        coloraxis_showscale=False,  # UI를 깔끔하게 하기 위해 색상 바 숨김
-        hovermode=False            # 차트 전체의 호버 모드 비활성화
+        coloraxis_showscale=False,
+        hovermode=False,
     )
     
     # Plotly 모드바 설정: Plotly 내장 전체화면 버튼 사용
