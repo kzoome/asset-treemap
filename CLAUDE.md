@@ -4,154 +4,108 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Streamlit-based portfolio visualization application that displays asset allocation using interactive treemaps and USD/KRW exchange rate charts. Data is fetched from Google Sheets and visualized using Plotly.
+Streamlit-based portfolio visualization app displaying asset allocation treemaps and USD/KRW exchange rate charts. Data source is Google Sheets via service account credentials.
 
 ## Key Technologies
 
-- **Framework**: Streamlit (web application framework)
-- **Data Processing**: Pandas
-- **Visualization**: Plotly Express
-- **Data Source**: Google Sheets via gspread library
-- **Authentication**: Google OAuth2 service account
-- **External Data**: yfinance (for exchange rate data)
+- **Framework**: Streamlit + `streamlit-js-eval` (viewport detection)
+- **Visualization**: Plotly Express (treemap, line chart)
+- **Data Source**: Google Sheets via `gspread`
+- **Auth**: Google OAuth2 service account (app) + personal OAuth2 (monthly snapshot script)
+- **External Data**: `yfinance` (USD/KRW exchange rate, market trading days)
 
 ## Development Commands
 
-### Setup
 ```bash
-# Create virtual environment
-python3 -m venv .venv
-
-# Activate virtual environment
-source .venv/bin/activate  # macOS/Linux
-# or
-.venv\Scripts\activate  # Windows
-
-# Install dependencies
+# Setup
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-### Running the Application
-```bash
-# Run locally (default port 8501)
+# Run app
 streamlit run app.py
 
-# Run with specific configuration
-streamlit run app.py --server.enableCORS false --server.enableXsrfProtection false
-```
-
-### Testing Google Sheets Connection
-```bash
-# Test Google Sheets authentication and data access
+# Test Google Sheets connection
 python google_sheets_test.py
+
+# Monthly snapshot (월말 실행)
+python monthly_snapshot.py               # 스냅샷 생성
+python monthly_snapshot.py --dry-run     # 원본 수정 없이 복사본만 생성
+python monthly_snapshot.py --setup       # '설정' 시트 초기 생성 (1회성)
+python monthly_snapshot.py --fix-refs    # raw 시트 참조 수식을 설정 시트로 교체
 ```
 
 ## Architecture
 
-### Single-File Application Structure
+### Application (`app.py`)
 
-The application is contained in `app.py` with the following key sections:
+Single-file Streamlit app with these layers:
 
-1. **Authentication Layer** (`check_password()`): Password protection using Streamlit secrets
-2. **Data Layer** (`load_data()`): Google Sheets integration with caching (10-minute TTL)
-3. **Visualization Layer**:
-   - Treemap visualization (asset allocation by category and performance)
-   - Exchange rate chart (USD/KRW historical data)
-4. **Configuration**: Sidebar controls for customizing visualizations
+1. **Auth** (`check_password()`): Session-state-based password gate using `st.secrets["password"]`. Bypassed if key absent (local dev).
+2. **Viewport detection**: Uses `streamlit_js_eval` to read `screen.width` and set `default_treemap_height` (800px desktop / 600px mobile). Calls `st.stop()` until JS returns a value.
+3. **Data** (`load_data()`, TTL=600s): Reads "종목별 현황" worksheet. Credential fallback: Streamlit secrets → `service_account.json` file.
+4. **Visualization**: Plotly treemap with 3 selectable hierarchy levels; Plotly line chart for USD/KRW (`get_exchange_rate()`, TTL=3600s).
+5. **Sidebar controls**: Color metric, color range, text wrap width, treemap height, hierarchy level, exchange rate period.
 
-### Data Flow
+### Monthly Snapshot Script (`monthly_snapshot.py`)
 
-```
-Google Sheets → gspread → Pandas DataFrame → Data Cleaning → Plotly Visualization
-                                                             ↓
-                                                    Streamlit UI
-```
+Standalone CLI script for end-of-month portfolio archiving. Uses **two** credential types:
+- **Service account** (`service_account.json`): Sheets read/write via gspread
+- **Personal OAuth2** (`client_secret_*.json` → cached in `token.json`): Drive `files.copy` (file ownership stays with personal account)
 
-### Key Data Transformations
+Workflow:
+1. Copies spreadsheet via Drive API
+2. Freezes all sheet formulas to values (prevents `#REF` from unloaded `GOOGLEFINANCE`)
+3. Freezes specific cells in "월별 수익률" and "자산배분현황"
+4. Appends new month rows to "월별 수익률", "월별 수익률 지수비교", "월별 누적"
+5. Updates "설정" sheet with current exchange rate and last trading dates
 
-The app expects Google Sheets data with columns:
-- `구분` (Category), `자산종류` (Asset Type), `종목명` (Name)
-- `금액` (Amount in ₩), `비중` (Weight %)
-- `변동_1d`, `변동_MTD_local`, `변동_MTD_KRW`, `변동_1y` (Performance metrics)
+### Data Transformations
 
-Data cleaning functions:
-- `clean_currency()`: Converts "₩81,643,700" → 81643700
-- `clean_percentage()`: Converts "5.2%" → 5.2
+Google Sheets "종목별 현황" worksheet → 9 columns:
 
-### Caching Strategy
+| 원본 | 변환 컬럼 | 형태 |
+|---|---|---|
+| 금액(₩) | `금액_숫자` | `int` (₩, 콤마 제거) |
+| 비중(%) | `비중_숫자` | `float` |
+| 변동_1d/MTD_local/MTD_KRW/1y | `{col}_숫자` | `float` |
 
-- `@st.cache_data(ttl=600)` on `load_data()`: Refreshes Google Sheets data every 10 minutes
-- `@st.cache_data(ttl=3600)` on `get_exchange_rate()`: Refreshes exchange rate data every hour
+Treemap color uses weighted-average of `비중_숫자` for aggregated levels (구분, 자산종류).
+
+### Credential Files (gitignored)
+
+- `service_account.json`: GCP service account key
+- `.streamlit/secrets.toml`: App secrets (password, SHEET_URL, gcp_service_account)
+- `token.json`: Personal OAuth2 cached token (monthly_snapshot.py)
+- `client_secret_*.json`: OAuth2 client secret (monthly_snapshot.py)
+
+The Google Sheet must have a worksheet named **"종목별 현황"** and the service account email must have editor access.
 
 ## Configuration
 
-### Required Secrets
-
-Create `.streamlit/secrets.toml` (excluded from git) with:
+### `.streamlit/secrets.toml` structure
 
 ```toml
-# Password protection
-password = "your_password_here"
+password = "..."
+SHEET_URL = "https://docs.google.com/spreadsheets/d/.../edit"
 
-# Google Sheets URL
-SHEET_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit"
-
-# Google service account credentials
 [gcp_service_account]
 type = "service_account"
-project_id = "your-project-id"
+project_id = "..."
 private_key_id = "..."
 private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-client_email = "your-service-account@your-project.iam.gserviceaccount.com"
+client_email = "...@....iam.gserviceaccount.com"
 client_id = "..."
 auth_uri = "https://accounts.google.com/o/oauth2/auth"
 token_uri = "https://oauth2.googleapis.com/token"
-# ... other fields
 ```
 
-### Local Development
+### Google Sheets expected worksheets
 
-For local development, you can use `service_account.json` file instead of secrets. The app falls back to file-based credentials if Streamlit secrets are not available.
-
-### Google Sheets Setup
-
-1. Create a service account in Google Cloud Console
-2. Download the JSON credentials
-3. Share your Google Sheet with the service account email (found in credentials)
-4. Ensure the sheet has a worksheet named "종목별 현황"
-
-## Deployment
-
-The app is configured for deployment on Streamlit Cloud or similar platforms:
-- Uses `.devcontainer/devcontainer.json` for GitHub Codespaces
-- Environment-aware credential loading (secrets vs. file-based)
-- Mobile-optimized UI with responsive layouts
-
-### Streamlit Cloud Deployment
-
-1. Push code to GitHub (ensure `service_account.json` and `secrets.toml` are gitignored)
-2. Connect repository to Streamlit Cloud
-3. Add secrets via Streamlit Cloud UI (paste contents of `secrets.toml`)
-4. Deploy
-
-## UI Features
-
-### Treemap Visualization
-- Multi-level hierarchy: 전체 → 구분 → 자산종류 → 종목명
-- Color-coded by performance (red = negative, green = positive)
-- Customizable color ranges via sidebar slider
-- Text wrapping control for long asset names
-- Hover interactions disabled for mobile optimization
-
-### Exchange Rate Chart
-- Displays USD/KRW historical data
-- Period selection: 1 month, 3 months, 6 months, 1 year, 5 years, 10 years
-- Auto-scaling y-axis (doesn't start from zero)
-- Dynamic x-axis formatting based on period
-
-## Code Style Notes
-
-- Korean language UI (titles, labels, error messages)
-- Mobile-first design considerations
-- Minimal margins and optimized heights for small screens
-- Display mode bar disabled for cleaner mobile experience
+| 시트명 | 용도 |
+|---|---|
+| 종목별 현황 | app.py 메인 데이터 |
+| 설정 | 월별 스냅샷 설정값 (B2: 한국MTD기준일, B3: 미국MTD기준일, B4: 전월환율) |
+| 월별 수익률 | 스냅샷 대상 |
+| 월별 수익률 지수비교 | 스냅샷 대상 |
+| 월별 누적 | 스냅샷 대상 |
+| 자산배분현황 | 환율 셀(J4, K5) 고정 대상 |

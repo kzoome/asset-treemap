@@ -5,3 +5,6 @@ service_account.json
 # 파이썬 캐시 및 시스템 파일
 __pycache__/
 .DS_Store
+token.json
+client_secret_*.json
+streamlit.log
