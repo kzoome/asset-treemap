@@ -145,9 +145,6 @@ try:
         "🎚️ 색상 범위 (±%)", min_value=1, max_value=50, value=default_range
     )
     
-    # 화면 크기에 따라 사용자가 직접 조절할 수 있도록 슬라이더 추가
-    wrap_width = st.sidebar.slider("텍스트 줄바꿈 기준 (글자수)", min_value=5, max_value=30, value=10)
-
     # 트리맵 높이 조절 슬라이더
     treemap_height = st.sidebar.slider("📏 트리맵 높이 (px)", min_value=400, max_value=1200, value=default_treemap_height, step=50)
 
@@ -177,9 +174,23 @@ try:
     interval_options = {'일봉': '1d', '주봉': '1wk', '월봉': '1mo'}
     selected_interval_label = st.sidebar.radio("봉 단위", list(interval_options.keys()), index=0)
     selected_interval = interval_options[selected_interval_label]
-    
-    # 설정한 글자수 기준으로 줄바꿈 처리
-    df['종목명_display'] = df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=wrap_width)))
+
+    # 기간+봉 단위 자동 조정 (yfinance 제한 대응)
+    effective_interval = selected_interval
+    effective_interval_label = selected_interval_label
+    auto_adjusted = False
+    if selected_period in ['5y', '10y'] and selected_interval == '1d':
+        effective_interval = '1wk'
+        effective_interval_label = '주봉'
+        auto_adjusted = True
+    elif selected_period == '10y' and selected_interval == '1wk':
+        effective_interval = '1mo'
+        effective_interval_label = '월봉'
+        auto_adjusted = True
+    if auto_adjusted:
+        st.sidebar.caption(f"⚠️ {selected_period_label}에서 {selected_interval_label}은 데이터 제한으로 {effective_interval_label}으로 자동 변환됩니다.")
+
+    df['종목명_display'] = df['종목명'].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=10)))
 
     # 레벨별 가중평균 변동값 사전 계산 (1/2단계에서 (?) 방지)
     for group_col in ['구분', '자산종류']:
@@ -236,7 +247,7 @@ try:
 
     # 시장 차트 추가
     st.markdown("---")
-    st.subheader(f"📈 시장 차트 ({selected_period_label} · {selected_interval_label})")
+    st.subheader(f"📈 시장 차트 ({selected_period_label} · {effective_interval_label})")
 
     tick_format = "%m-%d" if selected_period in ['1mo', '3mo', '6mo'] else "%y-%m"
 
@@ -248,7 +259,7 @@ try:
             return hist
         return hist[['Open', 'High', 'Low', 'Close']]
 
-    def make_candlestick_fig(ohlc_df, tick_fmt):
+    def make_candlestick_fig(ohlc_df, tick_fmt, height=220):
         fig = go.Figure(data=[go.Candlestick(
             x=ohlc_df.index,
             open=ohlc_df['Open'],
@@ -266,26 +277,54 @@ try:
             xaxis_title="",
             yaxis_title="",
             margin=dict(t=5, l=10, r=10, b=10),
-            height=220,
+            height=height,
         )
         return fig
 
     chart_config = {'displayModeBar': False}
 
-    def render_chart(symbol):
+    def render_chart(symbol, height=220):
         try:
-            data = get_market_data(symbol, selected_period, selected_interval)
+            data = get_market_data(symbol, selected_period, effective_interval)
             if not data.empty:
-                st.plotly_chart(make_candlestick_fig(data, tick_format), use_container_width=True, config=chart_config)
+                st.plotly_chart(make_candlestick_fig(data, tick_format, height=height), use_container_width=True, config=chart_config)
             else:
                 st.warning("데이터를 가져올 수 없습니다.")
         except Exception as e:
             st.error(f"오류: {e}")
 
-    with st.spinner('시장 데이터를 불러오는 중...'):
-        st.markdown("**💱 USD/KRW 환율**")
-        render_chart("USDKRW=X")
+    @st.cache_data(ttl=86400)
+    def get_yield_curve_data(period_str, interval_str):
+        import requests, io
+        from datetime import date, timedelta
+        period_days = {
+            '1mo': 30, '3mo': 90, '6mo': 180,
+            '1y': 365, '5y': 365 * 5, '10y': 365 * 10,
+        }
+        start = (date.today() - timedelta(days=period_days.get(period_str, 90))).strftime('%Y-%m-%d')
 
+        def fetch_fred(series_id):
+            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+            resp = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+            if resp.status_code != 200:
+                return pd.Series(dtype=float, name=series_id)
+            df_tmp = pd.read_csv(io.StringIO(resp.text), index_col=0, parse_dates=True)
+            series = pd.to_numeric(df_tmp.iloc[:, 0], errors='coerce')
+            series.name = series_id
+            return series[series.index >= pd.Timestamp(start)]
+
+        dgs2   = fetch_fred('DGS2')
+        dgs10  = fetch_fred('DGS10')
+        spread = fetch_fred('T10Y2Y')
+        combined = pd.DataFrame({'미국 2년물': dgs2, '미국 10년물': dgs10, '스프레드': spread})
+        if interval_str == '1wk':
+            combined = combined.resample('W').last()
+        elif interval_str == '1mo':
+            combined = combined.resample('ME').last()
+        return combined.dropna(how='all')
+
+    with st.spinner('시장 데이터를 불러오는 중...'):
+        # 1. 주식 지수 (최상단)
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**🇺🇸 S&P 500**")
@@ -302,79 +341,79 @@ try:
             st.markdown("**🇰🇷 KOSDAQ**")
             render_chart("^KQ11")
 
-        # 기준금리 차트
-        st.markdown("**📊 기준금리 (미국 · 한국)**")
-
-        @st.cache_data(ttl=86400)
-        def get_interest_rates(period_str, interval_str):
-            import requests, io
-            from datetime import date, timedelta
-            period_days = {
-                '1mo': 30, '3mo': 90, '6mo': 180,
-                '1y': 365, '5y': 365 * 5, '10y': 365 * 10,
-            }
-            start = (date.today() - timedelta(days=period_days.get(period_str, 90))).strftime('%Y-%m-%d')
-
-            def fetch_fred(series_id):
-                url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
-                resp = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-                if resp.status_code != 200:
-                    return pd.Series(dtype=float, name=series_id)
-                df = pd.read_csv(io.StringIO(resp.text), index_col=0, parse_dates=True)
-                series = pd.to_numeric(df.iloc[:, 0], errors='coerce')
-                series.name = series_id
-                return series[series.index >= pd.Timestamp(start)]
-
-            # 미국: DFF (일별 실효기준금리), 한국: IR3TIB01KRM156N (3개월 은행간금리, 월별)
-            # 미국 10년물: DGS10 (일별), 한국 10년물: IRLTLT01KRM156N (월별)
-            us_base = fetch_fred('DFF')
-            kr_base = fetch_fred('IR3TIB01KRM156N')
-            us_10y  = fetch_fred('DGS10')
-            kr_10y  = fetch_fred('IRLTLT01KRM156N')
-            combined = pd.DataFrame({
-                '미국 기준금리': us_base,
-                '한국 기준금리': kr_base,
-                '미국 10년물':   us_10y,
-                '한국 10년물':   kr_10y,
-            })
-            # 월별 시리즈 앞값 채움
-            for col in ['한국 기준금리', '한국 10년물']:
-                combined[col] = combined[col].ffill()
-            if interval_str == '1wk':
-                combined = combined.resample('W').last()
-            elif interval_str == '1mo':
-                combined = combined.resample('ME').last()
-            return combined.dropna(how='all')
-
+        # 2. 미국 국채 수익률 & 장단기 스프레드
         try:
-            rate_df = get_interest_rates(selected_period, selected_interval)
-            if not rate_df.empty:
-                fig_rate = go.Figure()
-                traces = [
-                    ('미국 기준금리', '#4488FF', 'solid'),
-                    ('한국 기준금리', '#FF6644', 'solid'),
-                    ('미국 10년물',   '#44CCFF', 'dot'),
-                    ('한국 10년물',   '#FFAA44', 'dot'),
-                ]
-                for col, color, dash in traces:
-                    if col in rate_df.columns:
-                        fig_rate.add_trace(go.Scatter(
-                            x=rate_df.index, y=rate_df[col],
-                            mode='lines', name=col,
-                            line=dict(color=color, shape='hv', width=2, dash=dash),
-                        ))
-                fig_rate.update_layout(
-                    xaxis=dict(tickformat=tick_format, nticks=6, tickangle=0),
-                    xaxis_title="", yaxis_title="%",
-                    margin=dict(t=25, l=10, r=10, b=10),
-                    height=250,
-                    legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0),
-                )
-                st.plotly_chart(fig_rate, use_container_width=True, config=chart_config)
+            yc_df = get_yield_curve_data(selected_period, effective_interval)
+            if not yc_df.empty:
+                col_yield, col_spread = st.columns([2, 2])
+                with col_yield:
+                    st.markdown("**📈 미국 국채 수익률 (2Y · 10Y)**")
+                    fig_yield = go.Figure()
+                    for col_name, color in [('미국 2년물', '#FF8844'), ('미국 10년물', '#4488FF')]:
+                        if col_name in yc_df.columns:
+                            fig_yield.add_trace(go.Scatter(
+                                x=yc_df.index, y=yc_df[col_name],
+                                mode='lines', name=col_name,
+                                line=dict(color=color, width=2),
+                            ))
+                    fig_yield.update_layout(
+                        xaxis=dict(tickformat=tick_format, nticks=6, tickangle=0),
+                        xaxis_title="", yaxis_title="%",
+                        margin=dict(t=25, l=10, r=10, b=10),
+                        height=240,
+                        legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0),
+                    )
+                    st.plotly_chart(fig_yield, use_container_width=True, config=chart_config)
+
+                with col_spread:
+                    st.markdown("**📉 장단기 스프레드 (10Y - 2Y)**")
+                    spread_series = yc_df['스프레드'].dropna()
+                    bar_colors = ['#00CC44' if v >= 0 else '#FF3333' for v in spread_series]
+                    fig_spread = go.Figure()
+                    fig_spread.add_trace(go.Bar(
+                        x=spread_series.index, y=spread_series.values,
+                        marker_color=bar_colors, name='스프레드',
+                    ))
+                    fig_spread.add_hline(y=0, line_color='white', line_width=1)
+                    fig_spread.update_layout(
+                        xaxis=dict(tickformat=tick_format, nticks=6, tickangle=0),
+                        xaxis_title="", yaxis_title="%",
+                        margin=dict(t=25, l=10, r=10, b=10),
+                        height=240,
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_spread, use_container_width=True, config=chart_config)
             else:
-                st.warning("금리 데이터를 가져올 수 없습니다.")
+                st.warning("국채 수익률 데이터를 가져올 수 없습니다.")
         except Exception as e:
-            st.error(f"기준금리 데이터 오류: {e}")
+            st.error(f"국채 수익률 데이터 오류: {e}")
+
+        # 3. 환율 · 달러 인덱스 · VIX (작게)
+        col_fx1, col_fx2, col_vix = st.columns([1, 1, 1])
+        with col_fx1:
+            st.markdown("**💱 USD/KRW**")
+            render_chart("USDKRW=X", height=160)
+        with col_fx2:
+            st.markdown("**💵 달러 인덱스 (DXY)**")
+            render_chart("DX-Y.NYB", height=160)
+        with col_vix:
+            st.markdown("**😱 VIX**")
+            render_chart("^VIX", height=160)
+
+        # 4. 상품 & 대안자산
+        col5, col6, col7, col8 = st.columns(4)
+        with col5:
+            st.markdown("**🛢️ WTI 원유**")
+            render_chart("CL=F")
+        with col6:
+            st.markdown("**🥇 금 (Gold)**")
+            render_chart("GC=F")
+        with col7:
+            st.markdown("**₿ 비트코인**")
+            render_chart("BTC-USD")
+        with col8:
+            st.markdown("**🔧 구리 (Copper)**")
+            render_chart("HG=F")
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
