@@ -7,3 +7,5 @@ google-api-python-client
 google-auth-oauthlib
 yfinance
 streamlit-js-eval==1.0.0
+beautifulsoup4
+lxml

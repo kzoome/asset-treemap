@@ -168,11 +168,11 @@ try:
         '5년': '5y',
         '10년': '10y'
     }
-    selected_period_label = st.sidebar.selectbox("조회 기간", list(period_options.keys()), index=1)
+    selected_period_label = st.sidebar.selectbox("조회 기간", list(period_options.keys()), index=3)
     selected_period = period_options[selected_period_label]
 
     interval_options = {'일봉': '1d', '주봉': '1wk', '월봉': '1mo'}
-    selected_interval_label = st.sidebar.radio("봉 단위", list(interval_options.keys()), index=0)
+    selected_interval_label = st.sidebar.radio("봉 단위", list(interval_options.keys()), index=1)
     selected_interval = interval_options[selected_interval_label]
 
     # 기간+봉 단위 자동 조정 (yfinance 제한 대응)
@@ -283,7 +283,9 @@ try:
 
     chart_config = {'displayModeBar': False}
 
-    def render_chart(symbol, height=220):
+    def render_chart(symbol, label="", height=220):
+        if label:
+            st.markdown(f"**{label}**")
         try:
             data = get_market_data(symbol, selected_period, effective_interval)
             if not data.empty:
@@ -316,7 +318,8 @@ try:
         dgs2   = fetch_fred('DGS2')
         dgs10  = fetch_fred('DGS10')
         spread = fetch_fred('T10Y2Y')
-        combined = pd.DataFrame({'미국 2년물': dgs2, '미국 10년물': dgs10, '스프레드': spread})
+        infl   = fetch_fred('T10YIE')
+        combined = pd.DataFrame({'미국 2년물': dgs2, '미국 10년물': dgs10, '스프레드': spread, '기대 인플레이션': infl})
         if interval_str == '1wk':
             combined = combined.resample('W').last()
         elif interval_str == '1mo':
@@ -327,25 +330,23 @@ try:
         # 1. 주식 지수 (최상단)
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**🇺🇸 S&P 500**")
-            render_chart("^GSPC")
+            render_chart("^GSPC", label="🇺🇸 S&P 500")
         with col2:
-            st.markdown("**🇺🇸 NASDAQ 100**")
-            render_chart("^NDX")
+            render_chart("^NDX", label="🇺🇸 NASDAQ 100")
 
-        col3, col4 = st.columns(2)
+        col3, col4, col5 = st.columns(3)
         with col3:
-            st.markdown("**🇰🇷 KOSPI**")
-            render_chart("^KS11")
+            render_chart("^KS11", label="🇰🇷 KOSPI")
         with col4:
-            st.markdown("**🇰🇷 KOSDAQ**")
-            render_chart("^KQ11")
+            render_chart("^KQ11", label="🇰🇷 KOSDAQ")
+        with col5:
+            render_chart("^SOX", label="💾 SOX 반도체")
 
         # 2. 미국 국채 수익률 & 장단기 스프레드
         try:
             yc_df = get_yield_curve_data(selected_period, effective_interval)
             if not yc_df.empty:
-                col_yield, col_spread = st.columns([2, 2])
+                col_yield, col_spread, col_infl = st.columns([2, 2, 2])
                 with col_yield:
                     st.markdown("**📈 미국 국채 수익률 (2Y · 10Y)**")
                     fig_yield = go.Figure()
@@ -383,6 +384,26 @@ try:
                         showlegend=False,
                     )
                     st.plotly_chart(fig_spread, use_container_width=True, config=chart_config)
+
+                with col_infl:
+                    st.markdown("**🌡️ 기대 인플레이션 (10Y BEI)**")
+                    infl_series = yc_df['기대 인플레이션'].dropna()
+                    fig_infl = go.Figure()
+                    fig_infl.add_trace(go.Scatter(
+                        x=infl_series.index, y=infl_series.values,
+                        mode='lines', name='기대 인플레이션',
+                        line=dict(color='#FFDD44', width=2),
+                        fill='tozeroy',
+                        fillcolor='rgba(255,221,68,0.08)',
+                    ))
+                    fig_infl.update_layout(
+                        xaxis=dict(tickformat=tick_format, nticks=6, tickangle=0),
+                        xaxis_title="", yaxis_title="%",
+                        margin=dict(t=25, l=10, r=10, b=10),
+                        height=240,
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_infl, use_container_width=True, config=chart_config)
             else:
                 st.warning("국채 수익률 데이터를 가져올 수 없습니다.")
         except Exception as e:
@@ -391,29 +412,92 @@ try:
         # 3. 환율 · 달러 인덱스 · VIX (작게)
         col_fx1, col_fx2, col_vix = st.columns([1, 1, 1])
         with col_fx1:
-            st.markdown("**💱 USD/KRW**")
-            render_chart("USDKRW=X", height=160)
+            render_chart("USDKRW=X", label="💱 USD/KRW", height=160)
         with col_fx2:
-            st.markdown("**💵 달러 인덱스 (DXY)**")
-            render_chart("DX-Y.NYB", height=160)
+            render_chart("DX-Y.NYB", label="💵 달러 인덱스 (DXY)", height=160)
         with col_vix:
-            st.markdown("**😱 VIX**")
-            render_chart("^VIX", height=160)
+            render_chart("^VIX", label="😱 VIX", height=160)
 
         # 4. 상품 & 대안자산
         col5, col6, col7, col8 = st.columns(4)
         with col5:
-            st.markdown("**🛢️ WTI 원유**")
-            render_chart("CL=F")
+            render_chart("GC=F", label="🥇 금 (Gold)")
         with col6:
-            st.markdown("**🥇 금 (Gold)**")
-            render_chart("GC=F")
+            render_chart("CL=F", label="🛢️ WTI 원유")
         with col7:
-            st.markdown("**₿ 비트코인**")
-            render_chart("BTC-USD")
+            render_chart("HG=F", label="🔧 구리 (Copper)")
         with col8:
-            st.markdown("**🔧 구리 (Copper)**")
-            render_chart("HG=F")
+            render_chart("BTC-USD", label="₿ 비트코인")
+
+        # 5. TANKER 신조선가 (KOBC)
+        @st.cache_data(ttl=86400)
+        def get_kobc_tanker_data(period_str):
+            import requests
+            from bs4 import BeautifulSoup
+            from datetime import date, timedelta
+            period_days = {
+                '1mo': 30, '3mo': 90, '6mo': 180,
+                '1y': 365, '5y': 365 * 5, '10y': 365 * 10,
+            }
+            end = date.today()
+            start = end - timedelta(days=period_days.get(period_str, 365))
+            url = "https://www.kobc.or.kr/ebz/shippinginfo/stn/gridList.do?mId=0401000000"
+            hdrs = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                'Referer': 'https://www.kobc.or.kr/ebz/shippinginfo/main.do',
+                'Content-Type': 'application/x-www-form-urlencoded',
+            }
+            payload = {'sDay': start.strftime('%Y-%m-%d'), 'eDay': end.strftime('%Y-%m-%d')}
+            session = requests.Session()
+            session.get('https://www.kobc.or.kr/ebz/shippinginfo/main.do', headers=hdrs, timeout=15)
+            resp = session.post(url, data=payload, headers=hdrs, timeout=15)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            table = soup.find('table')
+            if not table:
+                return pd.DataFrame()
+            headers_list = [th.get_text(strip=True) for th in table.find_all('th')]
+            rows = [[td.get_text(strip=True) for td in tr.find_all('td')] for tr in table.find_all('tr') if tr.find_all('td')]
+            if not rows or not headers_list:
+                return pd.DataFrame()
+            df_kobc = pd.DataFrame(rows, columns=headers_list[:len(rows[0])])
+            df_kobc['Date'] = pd.to_datetime(df_kobc['Date'])
+            for col in df_kobc.columns[1:]:
+                df_kobc[col] = pd.to_numeric(df_kobc[col], errors='coerce')
+            return df_kobc.sort_values('Date').reset_index(drop=True)
+
+        try:
+            tanker_df = get_kobc_tanker_data(selected_period)
+            if not tanker_df.empty:
+                st.markdown("**🚢 TANKER 신조선가 (KOBC, 단위: $M)**")
+                tanker_colors = {
+                    'VLCC(320K)':     '#FF6644',
+                    'SUEZMAX(160K)':  '#FFAA44',
+                    'AFRAMAX(110K)':  '#FFDD44',
+                    'LR2(110K)':      '#88DD44',
+                    'LR1(74K)':       '#44CCFF',
+                    'MR(50K)':        '#AA88FF',
+                }
+                fig_tanker = go.Figure()
+                for col_name, color in tanker_colors.items():
+                    if col_name in tanker_df.columns:
+                        fig_tanker.add_trace(go.Scatter(
+                            x=tanker_df['Date'], y=tanker_df[col_name],
+                            mode='lines', name=col_name,
+                            line=dict(color=color, width=2),
+                        ))
+                fig_tanker.update_layout(
+                    xaxis=dict(tickformat=tick_format, nticks=8, tickangle=0),
+                    xaxis_title="", yaxis_title="$M",
+                    margin=dict(t=10, l=10, r=10, b=10),
+                    height=260,
+                    legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0),
+                )
+                st.plotly_chart(fig_tanker, use_container_width=True, config=chart_config)
+            else:
+                st.warning("TANKER 신조선가 데이터를 가져올 수 없습니다.")
+        except Exception as e:
+            st.error(f"TANKER 신조선가 오류: {e}")
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
