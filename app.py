@@ -470,26 +470,27 @@ try:
             tanker_df = get_kobc_tanker_data(selected_period)
             if not tanker_df.empty:
                 st.markdown("**🚢 TANKER 신조선가 (KOBC, 단위: $M)**")
-                tanker_colors = {
-                    'VLCC(320K)':     '#FF6644',
-                    'SUEZMAX(160K)':  '#FFAA44',
-                    'AFRAMAX(110K)':  '#FFDD44',
-                    'LR2(110K)':      '#88DD44',
-                    'LR1(74K)':       '#44CCFF',
-                    'MR(50K)':        '#AA88FF',
-                }
                 fig_tanker = go.Figure()
-                for col_name, color in tanker_colors.items():
-                    if col_name in tanker_df.columns:
-                        fig_tanker.add_trace(go.Scatter(
-                            x=tanker_df['Date'], y=tanker_df[col_name],
-                            mode='lines', name=col_name,
-                            line=dict(color=color, width=2),
-                        ))
+                if 'VLCC(320K)' in tanker_df.columns:
+                    fig_tanker.add_trace(go.Scatter(
+                        x=tanker_df['Date'], y=tanker_df['VLCC(320K)'],
+                        mode='lines', name='VLCC(320K)',
+                        line=dict(color='#FF6644', width=2),
+                        yaxis='y1',
+                    ))
+                if 'SUEZMAX(160K)' in tanker_df.columns:
+                    fig_tanker.add_trace(go.Scatter(
+                        x=tanker_df['Date'], y=tanker_df['SUEZMAX(160K)'],
+                        mode='lines', name='SUEZMAX(160K)',
+                        line=dict(color='#44CCFF', width=2),
+                        yaxis='y2',
+                    ))
                 fig_tanker.update_layout(
                     xaxis=dict(tickformat=tick_format, nticks=8, tickangle=0),
-                    xaxis_title="", yaxis_title="$M",
-                    margin=dict(t=10, l=10, r=10, b=10),
+                    xaxis_title="",
+                    yaxis=dict(title=dict(text='VLCC ($M)', font=dict(color='#FF6644')), tickfont=dict(color='#FF6644')),
+                    yaxis2=dict(title=dict(text='SUEZMAX ($M)', font=dict(color='#44CCFF')), tickfont=dict(color='#44CCFF'), overlaying='y', side='right'),
+                    margin=dict(t=10, l=10, r=60, b=10),
                     height=260,
                     legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0),
                 )
