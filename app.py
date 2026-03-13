@@ -334,13 +334,11 @@ try:
         with col2:
             render_chart("^NDX", label="🇺🇸 NASDAQ 100")
 
-        col3, col4, col5 = st.columns(3)
+        col3, col4 = st.columns(2)
         with col3:
             render_chart("^KS11", label="🇰🇷 KOSPI")
         with col4:
             render_chart("^KQ11", label="🇰🇷 KOSDAQ")
-        with col5:
-            render_chart("^SOX", label="💾 SOX 반도체")
 
         # 2. 미국 국채 수익률 & 장단기 스프레드
         try:
@@ -429,7 +427,11 @@ try:
         with col8:
             render_chart("BTC-USD", label="₿ 비트코인")
 
-        # 5. TANKER 신조선가 (KOBC)
+        # 5. SOX 반도체 & TANKER 신조선가 (KOBC)
+        col_sox, col_tanker = st.columns(2)
+        with col_sox:
+            render_chart("^SOX", label="💾 SOX 반도체")
+
         @st.cache_data(ttl=86400)
         def get_kobc_tanker_data(period_str):
             import requests
@@ -466,39 +468,40 @@ try:
                 df_kobc[col] = pd.to_numeric(df_kobc[col], errors='coerce')
             return df_kobc.sort_values('Date').reset_index(drop=True)
 
-        try:
-            tanker_df = get_kobc_tanker_data(selected_period)
-            if not tanker_df.empty:
-                st.markdown("**🚢 TANKER 신조선가 (KOBC, 단위: $M)**")
-                fig_tanker = go.Figure()
-                if 'VLCC(320K)' in tanker_df.columns:
-                    fig_tanker.add_trace(go.Scatter(
-                        x=tanker_df['Date'], y=tanker_df['VLCC(320K)'],
-                        mode='lines', name='VLCC(320K)',
-                        line=dict(color='#FF6644', width=2),
-                        yaxis='y1',
-                    ))
-                if 'SUEZMAX(160K)' in tanker_df.columns:
-                    fig_tanker.add_trace(go.Scatter(
-                        x=tanker_df['Date'], y=tanker_df['SUEZMAX(160K)'],
-                        mode='lines', name='SUEZMAX(160K)',
-                        line=dict(color='#44CCFF', width=2),
-                        yaxis='y2',
-                    ))
-                fig_tanker.update_layout(
-                    xaxis=dict(tickformat=tick_format, nticks=8, tickangle=0),
-                    xaxis_title="",
-                    yaxis=dict(title=dict(text='VLCC ($M)', font=dict(color='#FF6644')), tickfont=dict(color='#FF6644')),
-                    yaxis2=dict(title=dict(text='SUEZMAX ($M)', font=dict(color='#44CCFF')), tickfont=dict(color='#44CCFF'), overlaying='y', side='right'),
-                    margin=dict(t=10, l=10, r=60, b=10),
-                    height=260,
-                    legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0),
-                )
-                st.plotly_chart(fig_tanker, use_container_width=True, config=chart_config)
-            else:
-                st.warning("TANKER 신조선가 데이터를 가져올 수 없습니다.")
-        except Exception as e:
-            st.error(f"TANKER 신조선가 오류: {e}")
+        with col_tanker:
+            try:
+                tanker_df = get_kobc_tanker_data(selected_period)
+                if not tanker_df.empty:
+                    st.markdown("**🚢 TANKER 신조선가 (KOBC, 단위: $M)**")
+                    fig_tanker = go.Figure()
+                    if 'VLCC(320K)' in tanker_df.columns:
+                        fig_tanker.add_trace(go.Scatter(
+                            x=tanker_df['Date'], y=tanker_df['VLCC(320K)'],
+                            mode='lines', name='VLCC(320K)',
+                            line=dict(color='#FF6644', width=2),
+                            yaxis='y1',
+                        ))
+                    if 'SUEZMAX(160K)' in tanker_df.columns:
+                        fig_tanker.add_trace(go.Scatter(
+                            x=tanker_df['Date'], y=tanker_df['SUEZMAX(160K)'],
+                            mode='lines', name='SUEZMAX(160K)',
+                            line=dict(color='#44CCFF', width=2),
+                            yaxis='y2',
+                        ))
+                    fig_tanker.update_layout(
+                        xaxis=dict(tickformat=tick_format, nticks=8, tickangle=0),
+                        xaxis_title="",
+                        yaxis=dict(title=dict(text='VLCC ($M)', font=dict(color='#FF6644')), tickfont=dict(color='#FF6644')),
+                        yaxis2=dict(title=dict(text='SUEZMAX ($M)', font=dict(color='#44CCFF')), tickfont=dict(color='#44CCFF'), overlaying='y', side='right'),
+                        margin=dict(t=10, l=10, r=60, b=10),
+                        height=260,
+                        legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0),
+                    )
+                    st.plotly_chart(fig_tanker, use_container_width=True, config=chart_config)
+                else:
+                    st.warning("TANKER 신조선가 데이터를 가져올 수 없습니다.")
+            except Exception as e:
+                st.error(f"TANKER 신조선가 오류: {e}")
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
