@@ -168,11 +168,11 @@ try:
         '5년': '5y',
         '10년': '10y'
     }
-    selected_period_label = st.sidebar.selectbox("조회 기간", list(period_options.keys()), index=3)
+    selected_period_label = st.sidebar.selectbox("조회 기간", list(period_options.keys()), index=1)
     selected_period = period_options[selected_period_label]
 
     interval_options = {'일봉': '1d', '주봉': '1wk', '월봉': '1mo'}
-    selected_interval_label = st.sidebar.radio("봉 단위", list(interval_options.keys()), index=1)
+    selected_interval_label = st.sidebar.radio("봉 단위", list(interval_options.keys()), index=0)
     selected_interval = interval_options[selected_interval_label]
 
     # 기간+봉 단위 자동 조정 (yfinance 제한 대응)
