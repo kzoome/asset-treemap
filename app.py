@@ -299,27 +299,43 @@ try:
     def get_yield_curve_data(period_str, interval_str):
         import requests, io
         from datetime import date, timedelta
+
         period_days = {
             '1mo': 30, '3mo': 90, '6mo': 180,
             '1y': 365, '5y': 365 * 5, '10y': 365 * 10,
         }
-        start = (date.today() - timedelta(days=period_days.get(period_str, 90))).strftime('%Y-%m-%d')
+        start_date = date.today() - timedelta(days=period_days.get(period_str, 90))
 
-        def fetch_fred(series_id):
-            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
-            resp = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-            if resp.status_code != 200:
-                return pd.Series(dtype=float, name=series_id)
-            df_tmp = pd.read_csv(io.StringIO(resp.text), index_col=0, parse_dates=True)
-            series = pd.to_numeric(df_tmp.iloc[:, 0], errors='coerce')
-            series.name = series_id
-            return series[series.index >= pd.Timestamp(start)]
+        def fetch_treasury_year(year):
+            url = (
+                f"https://home.treasury.gov/resource-center/data-chart-center/"
+                f"interest-rates/daily-treasury-rates.csv/{year}/all"
+                f"?type=daily_treasury_yield_curve&field_tdr_date_value={year}&download=true"
+            )
+            try:
+                resp = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+                if resp.status_code != 200 or not resp.text.strip():
+                    return pd.DataFrame()
+                df_tmp = pd.read_csv(io.StringIO(resp.text), parse_dates=['Date'], index_col='Date')
+                return df_tmp.sort_index()
+            except Exception:
+                return pd.DataFrame()
 
-        dgs2   = fetch_fred('DGS2')
-        dgs10  = fetch_fred('DGS10')
-        spread = fetch_fred('T10Y2Y')
-        infl   = fetch_fred('T10YIE')
-        combined = pd.DataFrame({'미국 2년물': dgs2, '미국 10년물': dgs10, '스프레드': spread, '기대 인플레이션': infl})
+        years = sorted({start_date.year, date.today().year})
+        frames = [fetch_treasury_year(y) for y in years]
+        raw = pd.concat([f for f in frames if not f.empty])
+        if raw.empty:
+            return pd.DataFrame()
+
+        raw = raw[~raw.index.duplicated(keep='last')].sort_index()
+        raw = raw[raw.index >= pd.Timestamp(start_date)]
+
+        combined = pd.DataFrame({
+            '미국 2년물': pd.to_numeric(raw['2 Yr'], errors='coerce'),
+            '미국 10년물': pd.to_numeric(raw['10 Yr'], errors='coerce'),
+        })
+        combined['스프레드'] = combined['미국 10년물'] - combined['미국 2년물']
+
         if interval_str == '1wk':
             combined = combined.resample('W').last()
         elif interval_str == '1mo':
@@ -344,7 +360,7 @@ try:
         try:
             yc_df = get_yield_curve_data(selected_period, effective_interval)
             if not yc_df.empty:
-                col_yield, col_spread, col_infl = st.columns([2, 2, 2])
+                col_yield, col_spread = st.columns([2, 2])
                 with col_yield:
                     st.markdown("**📈 미국 국채 수익률 (2Y · 10Y)**")
                     fig_yield = go.Figure()
@@ -382,26 +398,6 @@ try:
                         showlegend=False,
                     )
                     st.plotly_chart(fig_spread, use_container_width=True, config=chart_config)
-
-                with col_infl:
-                    st.markdown("**🌡️ 기대 인플레이션 (10Y BEI)**")
-                    infl_series = yc_df['기대 인플레이션'].dropna()
-                    fig_infl = go.Figure()
-                    fig_infl.add_trace(go.Scatter(
-                        x=infl_series.index, y=infl_series.values,
-                        mode='lines', name='기대 인플레이션',
-                        line=dict(color='#FFDD44', width=2),
-                        fill='tozeroy',
-                        fillcolor='rgba(255,221,68,0.08)',
-                    ))
-                    fig_infl.update_layout(
-                        xaxis=dict(tickformat=tick_format, nticks=6, tickangle=0),
-                        xaxis_title="", yaxis_title="%",
-                        margin=dict(t=25, l=10, r=10, b=10),
-                        height=240,
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig_infl, use_container_width=True, config=chart_config)
             else:
                 st.warning("국채 수익률 데이터를 가져올 수 없습니다.")
         except Exception as e:
