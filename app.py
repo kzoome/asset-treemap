@@ -321,7 +321,7 @@ try:
             except Exception:
                 return pd.DataFrame()
 
-        years = sorted({start_date.year, date.today().year})
+        years = list(range(start_date.year, date.today().year + 1))
         frames = [fetch_treasury_year(y) for y in years]
         raw = pd.concat([f for f in frames if not f.empty])
         if raw.empty:
