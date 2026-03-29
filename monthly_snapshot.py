@@ -389,6 +389,22 @@ def freeze_cells(ws: gspread.Worksheet, cells: list[str]) -> dict:
     return result
 
 
+def detect_loading_errors(values: dict) -> list[str]:
+    """값 dict에서 에러/로딩 중인 셀을 찾아 설명 목록 반환.
+
+    Google Sheets 에러값(#N/A, #REF! 등), Loading..., None을 감지한다.
+    """
+    problems = []
+    for cell_ref, val in values.items():
+        if val is None:
+            problems.append(f"{cell_ref}: 값 없음(None)")
+        elif isinstance(val, str) and (
+            val.startswith("#") or "Loading" in val or val.strip() == ""
+        ):
+            problems.append(f"{cell_ref}: {val!r}")
+    return problems
+
+
 def read_cells(ws: gspread.Worksheet, cells: list[str]) -> dict:
     """지정 셀 목록의 UNFORMATTED_VALUE를 읽어 dict 반환 (덮어쓰기 없음)"""
     result = {}
@@ -401,13 +417,111 @@ def read_cells(ws: gspread.Worksheet, cells: list[str]) -> dict:
     return result
 
 
-def add_new_month_row(ws: gspread.Worksheet, date_str: str, ref_row: int) -> int:
-    """마지막 데이터 행 다음에 날짜만 채운 새 행을 추가하고, 새 행 번호 반환.
+def adjust_row_refs(formula: str, old_row: int, new_row: int) -> str:
+    """수식 내 열 참조 행 번호를 조정한다.
 
-    ref_row: 수식 패턴을 복사할 기준 행 번호 (현재는 날짜만 입력).
+    old_row → new_row, old_row-1 → old_row 로 치환.
+    예: adjust_row_refs("=C93-C92-B93", 93, 94) → "=C94-C93-B94"
+    절대 참조($4 등)는 변경하지 않는다.
+    """
+    if not isinstance(formula, str) or not formula.startswith("="):
+        return formula
+
+    def replacer(m: re.Match) -> str:
+        prefix = m.group(1)   # '$' or ''
+        num = int(m.group(2))
+        if num == old_row:
+            return prefix + str(new_row)
+        elif num == old_row - 1:
+            return prefix + str(old_row)
+        return m.group(0)
+
+    return re.sub(r"(?<=[A-Z])(\$?)(\d+)", replacer, formula)
+
+
+def add_new_month_row(
+    ws: gspread.Worksheet,
+    date_str: str,
+    ref_row: int,
+    copy_formulas: bool = False,
+    zero_col_letters: list[str] | None = None,
+    format_end_col: str | None = None,
+) -> int:
+    """마지막 데이터 행 다음에 새 행을 추가하고, 새 행 번호 반환.
+
+    copy_formulas=True: ref_row 수식 패턴을 복사해 새 행을 채운다.
+      - 행 참조(ref_row, ref_row-1)는 새 행 번호에 맞게 자동 조정.
+      - zero_col_letters에 지정된 열은 0으로 설정 (예: ["J", "N"]).
+      - format_end_col: 서식 복사 마지막 열 문자 (예: "Q"). None이면 데이터 열 전체.
+    copy_formulas=False: A열에 date_str만 입력 (기존 동작).
     """
     new_row = ref_row + 1
-    ws.update([[date_str]], f"A{new_row}", value_input_option="RAW")
+
+    if not copy_formulas:
+        ws.update([[date_str]], f"A{new_row}", value_input_option="RAW")
+        return new_row
+
+    # 참조 행 수식 전체 읽기
+    range_data = ws.get(f"{ref_row}:{ref_row}", value_render_option="FORMULA")
+    formulas = range_data[0] if range_data else []
+    if not formulas:
+        ws.update([[date_str]], f"A{new_row}", value_input_option="RAW")
+        return new_row
+
+    # zero 처리할 열 인덱스(0-based) 계산
+    zero_indices: set[int] = set()
+    for col_str in (zero_col_letters or []):
+        n = 0
+        for ch in col_str.upper():
+            n = n * 26 + (ord(ch) - ord("A") + 1)
+        zero_indices.add(n - 1)
+
+    new_row_data = []
+    for i, cell_val in enumerate(formulas):
+        if i in zero_indices:
+            new_row_data.append(0)
+        elif isinstance(cell_val, str) and cell_val.startswith("="):
+            new_row_data.append(adjust_row_refs(cell_val, ref_row, new_row))
+        else:
+            new_row_data.append(cell_val)
+
+    # 서식 먼저 복사 (ref_row → new_row)
+    num_cols = len(new_row_data)
+    fmt_cols = num_cols
+    if format_end_col:
+        n = 0
+        for ch in format_end_col.upper():
+            n = n * 26 + (ord(ch) - ord("A") + 1)
+        fmt_cols = n
+    ws.spreadsheet.batch_update({
+        "requests": [{
+            "copyPaste": {
+                "source": {
+                    "sheetId": ws.id,
+                    "startRowIndex": ref_row - 1,
+                    "endRowIndex": ref_row,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": fmt_cols,
+                },
+                "destination": {
+                    "sheetId": ws.id,
+                    "startRowIndex": new_row - 1,
+                    "endRowIndex": new_row,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": fmt_cols,
+                },
+                "pasteType": "PASTE_FORMAT",
+                "pasteOrientation": "NORMAL",
+            }
+        }]
+    })
+
+    end_col = col_num_to_letter(num_cols)
+    ws.update(
+        [new_row_data],
+        f"A{new_row}:{end_col}{new_row}",
+        value_input_option="USER_ENTERED",
+    )
     return new_row
 
 
@@ -437,12 +551,8 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
     snapshot_title = f"포트폴리오 {prev_year}-{prev_month:02d} 스냅샷"
 
     mode = "[DRY-RUN] " if dry_run else ""
-    # 스냅샷 대상 월 확인: 기본은 prev_month이지만 월말 실행 시 당월로 선택 가능
-    print(f"\n{mode}스냅샷 대상 월을 선택하세요:")
-    print(f"  1) {prev_year}-{prev_month:02d} (전월, 기본)")
-    print(f"  2) {today.year}-{today.month:02d} (당월)")
-    choice = input("선택 [1/2, Enter=1]: ").strip()
-    if choice == "2":
+    # 15일 이후면 당월, 15일 이전이면 전월 기준으로 자동 선택
+    if today.day > 15:
         snap_year, snap_month = today.year, today.month
     else:
         snap_year, snap_month = prev_year, prev_month
@@ -451,10 +561,6 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
     print(f"\n{mode}{snapshot_title}을 생성합니다.")
     if dry_run:
         print("※ dry-run 모드: 복사본 생성·고정까지만 실행, 원본은 변경하지 않습니다.")
-    confirm = input("계속하시겠습니까? [y/N] ").strip().lower()
-    if confirm != "y":
-        print("취소되었습니다.")
-        return
 
     # ── 1. 원본 열기 ────────────────────────────────────────────────────────
     print("\n[1] 원본 스프레드시트 열기...")
@@ -498,6 +604,28 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
             if val is not None:
                 monthly_copy.update([[val]], cell_ref, value_input_option="RAW")
         print(f"    {monthly_last_row}행 고정 완료 ({len(snapshot_values)}셀)")
+
+        # 마지막 행 서식을 바로 위 행에서 전체 복사
+        if monthly_last_row > 1:
+            copy_doc.batch_update({"requests": [{"copyPaste": {
+                "source": {
+                    "sheetId": monthly_copy.id,
+                    "startRowIndex": monthly_last_row - 2,
+                    "endRowIndex": monthly_last_row - 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 1000,
+                },
+                "destination": {
+                    "sheetId": monthly_copy.id,
+                    "startRowIndex": monthly_last_row - 1,
+                    "endRowIndex": monthly_last_row,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 1000,
+                },
+                "pasteType": "PASTE_FORMAT",
+                "pasteOrientation": "NORMAL",
+            }}]})
+            print(f"    {monthly_last_row}행 서식 복원 완료 (전체 열)")
     except gspread.WorksheetNotFound:
         print("    경고: 복사본 '월별 수익률' 시트를 찾을 수 없습니다.")
 
@@ -518,6 +646,28 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
         )
     except gspread.WorksheetNotFound:
         print("    경고: 복사본 '자산배분현황' 시트를 찾을 수 없습니다.")
+
+    # ── 5-b. 스냅샷 값 유효성 검사 ──────────────────────────────────────────
+    # 에러/로딩 중인 값이 있으면 복사본 삭제 후 작업 중단 (원본 보존)
+    essential_cells = {
+        k: v for k, v in snapshot_values.items()
+        if any(k.startswith(c) for c in ["F", "H", "K", "O"])
+    }
+    if current_rate is not None:
+        essential_cells[ALLOC_CURR_RATE_CELL] = current_rate
+    problems = detect_loading_errors(essential_cells)
+    if problems:
+        print("\n❌ 스냅샷 값에 에러/로딩 중인 셀이 감지되었습니다:")
+        for p in problems:
+            print(f"   {p}")
+        print("   원본 파일을 보존하고 작업을 중단합니다.")
+        print("   복사본 삭제 중...")
+        try:
+            drive_service.files().delete(fileId=copy_id).execute()
+            print("   복사본 삭제 완료.")
+        except Exception as e:
+            print(f"   경고: 복사본 삭제 실패 ({e}). 수동 삭제 필요: {copy_url}")
+        return
 
     # ── 6~10. 원본 수정 (dry-run이면 출력만) ────────────────────────────────
     monthly_orig = None
@@ -573,13 +723,19 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
 
     print("[7] 원본 '월별 수익률' 새 행 추가 중...")
     if monthly_orig and orig_monthly_last_row:
-        new_row = add_new_month_row(monthly_orig, today.strftime("%Y-%m-%d"), orig_monthly_last_row)
+        new_row = add_new_month_row(
+            monthly_orig, today.strftime("%Y-%m-%d"), orig_monthly_last_row,
+            copy_formulas=True, zero_col_letters=["J", "N"], format_end_col="Q",
+        )
         print(f"    {new_row}행 추가 완료")
 
     print("[8] 원본 '월별 수익률 지수비교' 새 행 추가 중...")
     try:
         idx_orig = doc.worksheet("월별 수익률 지수비교")
-        new_row = add_new_month_row(idx_orig, today.strftime("%Y-%m-%d"), get_last_data_row(idx_orig))
+        new_row = add_new_month_row(
+            idx_orig, today.strftime("%Y-%m-%d"), get_last_data_row(idx_orig),
+            copy_formulas=True,
+        )
         print(f"    {new_row}행 추가 완료")
     except gspread.WorksheetNotFound:
         print("    경고: '월별 수익률 지수비교' 시트를 찾을 수 없습니다.")
@@ -587,7 +743,10 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
     print("[9] 원본 '월별 누적' 새 행 추가 중...")
     try:
         cum_orig = doc.worksheet("월별 누적")
-        new_row = add_new_month_row(cum_orig, today.strftime("%Y-%m-%d"), get_last_data_row(cum_orig))
+        new_row = add_new_month_row(
+            cum_orig, today.strftime("%Y-%m-%d"), get_last_data_row(cum_orig),
+            copy_formulas=True,
+        )
         print(f"    {new_row}행 추가 완료")
     except gspread.WorksheetNotFound:
         print("    경고: '월별 누적' 시트를 찾을 수 없습니다.")
@@ -606,6 +765,7 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
     print(f"\n✅ 완료!")
     print(f"   스냅샷: {snapshot_title}")
     print(f"   복사본 URL: {copy_url}")
+    return copy_url
 
 
 # ---------------------------------------------------------------------------
