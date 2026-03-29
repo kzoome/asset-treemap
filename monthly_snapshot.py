@@ -36,7 +36,12 @@ TOKEN_FILE = "token.json"  # 첫 인증 후 저장되는 토큰 (gitignore에 �
 SECRETS_FILE = ".streamlit/secrets.toml"
 
 # '월별 수익률' 마지막 행에서 고정할 열 목록
-MONTHLY_COLS_TO_FREEZE = ["A", "F", "H", "K", "L", "M", "N", "O", "Z", "AA"]
+# E: KOSPI 지수, G: S&P500 지수, AB: 환율 (GOOGLEFINANCE 직접 사용)
+MONTHLY_COLS_TO_FREEZE = ["A", "E", "F", "G", "H", "K", "L", "M", "N", "O", "Z", "AA", "AB"]
+
+# Step 3에서 전체를 값으로 고정할 시트 목록 (GOOGLEFINANCE 등 외부 데이터 소스 시트만)
+# 나머지 계산 시트는 소스 고정 후 자동으로 올바른 값을 참조함
+SHEETS_TO_FREEZE = ["종목별 현황(raw)"]
 
 # '자산배분현황'에서 고정할 환율 셀
 ALLOC_PREV_RATE_CELL = "J4"   # 전월환율
@@ -363,7 +368,7 @@ def freeze_sheet_values(src_ws: gspread.Worksheet, dst_ws: gspread.Worksheet) ->
     복사본 생성 직후 GOOGLEFINANCE 등 외부 함수가 아직 로딩되지 않아
     #REF/#N/A가 찍히는 문제를 방지하기 위해 원본(src)에서 값을 읽는다.
     """
-    all_values = src_ws.get_all_values(value_render_option="FORMATTED_VALUE")
+    all_values = src_ws.get_all_values(value_render_option="UNFORMATTED_VALUE")
     if not all_values:
         return
     last_row = len(all_values)
@@ -577,15 +582,15 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
 
     # ── 3. 복사본 전체 시트 값 고정 (원본에서 읽어서 복사본에 씀) ─────────────
     # 복사 직후 GOOGLEFINANCE 등이 로딩 전이라 #NUM/#REF가 찍히는 문제 방지
-    print("[3] 복사본 전체 시트 값 고정 중...")
+    print(f"[3] 소스 시트 값 고정 중 ({', '.join(SHEETS_TO_FREEZE)})...")
     orig_sheets = {ws.title: ws for ws in doc.worksheets()}
     copy_sheets = {ws.title: ws for ws in copy_doc.worksheets()}
-    for title, orig_ws in orig_sheets.items():
-        if title not in copy_sheets:
-            print(f"    경고: 복사본에 '{title}' 시트 없음, 스킵")
+    for title in SHEETS_TO_FREEZE:
+        if title not in orig_sheets or title not in copy_sheets:
+            print(f"    경고: '{title}' 시트 없음, 스킵")
             continue
         print(f"    {title}...", end=" ", flush=True)
-        freeze_sheet_values(orig_ws, copy_sheets[title])
+        freeze_sheet_values(orig_sheets[title], copy_sheets[title])
         print("완료")
 
     # ── 4. 복사본 '월별 수익률' 마지막 행 특정 셀 고정 ──────────────────────
@@ -605,27 +610,29 @@ def run_snapshot(gc: gspread.Client, drive_service, sheet_url: str, dry_run: boo
                 monthly_copy.update([[val]], cell_ref, value_input_option="RAW")
         print(f"    {monthly_last_row}행 고정 완료 ({len(snapshot_values)}셀)")
 
-        # 마지막 행 서식을 바로 위 행에서 전체 복사
+        # R열 이후 서식을 바로 위 행에서 복사
+        # (원본에서 새 행 추가 시 format_end_col="Q"로 R열 이후 서식이 누락될 수 있음)
+        # A-Q열은 Drive 복사본에서 서식이 보존되므로 건드리지 않음
         if monthly_last_row > 1:
             copy_doc.batch_update({"requests": [{"copyPaste": {
                 "source": {
                     "sheetId": monthly_copy.id,
                     "startRowIndex": monthly_last_row - 2,
                     "endRowIndex": monthly_last_row - 1,
-                    "startColumnIndex": 0,
+                    "startColumnIndex": 17,  # R열 이후 (0-indexed)
                     "endColumnIndex": 1000,
                 },
                 "destination": {
                     "sheetId": monthly_copy.id,
                     "startRowIndex": monthly_last_row - 1,
                     "endRowIndex": monthly_last_row,
-                    "startColumnIndex": 0,
+                    "startColumnIndex": 17,
                     "endColumnIndex": 1000,
                 },
                 "pasteType": "PASTE_FORMAT",
                 "pasteOrientation": "NORMAL",
             }}]})
-            print(f"    {monthly_last_row}행 서식 복원 완료 (전체 열)")
+            print(f"    {monthly_last_row}행 서식 복원 완료 (R열~)")
     except gspread.WorksheetNotFound:
         print("    경고: 복사본 '월별 수익률' 시트를 찾을 수 없습니다.")
 
